@@ -5,7 +5,6 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
-import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 /**
@@ -23,7 +22,7 @@ object FuturePatterns {
       try
         res.success(callable)
       catch {
-        case NonFatal(e) => res.failure(e)
+        case e: Throwable => res.failure(e)
       }
     }, duration.toMillis, TimeUnit.MILLISECONDS)
 
@@ -117,7 +116,7 @@ object FuturePatterns {
         try {
           producer.onComplete(second.complete)
         } catch {
-          case NonFatal(e) => second.failure(e)
+          case e: Throwable => second.failure(e)
         }
       }
     }, duration.toMillis, TimeUnit.MILLISECONDS)
