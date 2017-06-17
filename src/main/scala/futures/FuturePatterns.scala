@@ -127,13 +127,13 @@ object FuturePatterns {
 
   sealed trait RetryPolicy
 
-  case class Directly() extends RetryPolicy
+  case class Immediate() extends RetryPolicy
 
   case class Pause(duration: Duration) extends RetryPolicy
 
   case class Exponential(duration: Duration) extends RetryPolicy
 
-  case class Condition(predicate: Throwable => Boolean) extends RetryPolicy
+  case class Conditional(predicate: Throwable => Boolean) extends RetryPolicy
 
   def retry[T](retries: Int, policy: RetryPolicy)
               (producer: Int => Future[T])
@@ -146,8 +146,8 @@ object FuturePatterns {
       producer(attempt).recoverWith {
         case error: Throwable if attempt < retries - 1 =>
           policy match {
-            case Condition(predicate) if predicate(error) => nextRetry()
-            case Directly() => nextRetry()
+            case Conditional(predicate) if predicate(error) => nextRetry()
+            case Immediate() => nextRetry()
             case Pause(duration) => scheduleWith(duration) {
               nextRetry()
             }
@@ -217,7 +217,7 @@ object FuturePatterns {
 
 
     val t = System.currentTimeMillis()
-    val r = Await.result(retry(4, Condition(error => false)) { i =>
+    val r = Await.result(retry(4, Conditional(error => false)) { i =>
       println(i)
       //      if (i == 3) {
       //        Future(i)
