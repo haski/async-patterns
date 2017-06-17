@@ -139,9 +139,9 @@ object FuturePatterns {
               (producer: Int => Future[T])
               (implicit scheduler: ScheduledExecutorService, executor: ExecutionContext): Future[T] = {
 
-    def retry(retries: Int, policy: RetryPolicy, attempt: Int)
+    def retry(attempt: Int)
              (producer: Int => Future[T]): Future[T] = {
-      val nextRetry = () => retry(retries, policy, attempt + 1)(producer)
+      val nextRetry = () => retry(attempt + 1)(producer)
 
       producer(attempt).recoverWith {
         case error: Throwable if attempt < retries - 1 =>
@@ -158,17 +158,14 @@ object FuturePatterns {
       }
     }
 
-    retry(retries, policy, 0)(producer)
+    retry(0)(producer)
   }
 
   def batch[T, R](elements: Seq[T], batchSize: Int, stop: StopCondition = FailOnError)
                  (producer: T => Future[R])
                  (implicit executor: ExecutionContext): Future[Seq[R]] = {
 
-    val stopFlag = new AtomicBoolean(false)
-
-    def seqUnordered(elements: Seq[T], index: AtomicInteger, producer: T => Future[R],
-                     stop: StopCondition): Future[List[R]] = {
+    def seqUnordered(stopFlag: AtomicBoolean, index: AtomicInteger): Future[List[R]] = {
 
       val currentIndex = index.getAndIncrement
 
@@ -179,14 +176,14 @@ object FuturePatterns {
           Future(List[R]())
         } else {
           producer(elements(currentIndex)).flatMap((result: R) => {
-            seqUnordered(elements, index, producer, stop).map(results => result :: results)
+            seqUnordered(stopFlag, index).map(results => result :: results)
           }).recoverWith { case error: Throwable =>
             stop match {
               case StopOnError => stopFlag.set(true)
                 Future(List[R]())
               case FailOnError => stopFlag.set(true)
                 Future.failed(error)
-              case ContinueOnError => seqUnordered(elements, index, producer, stop)
+              case ContinueOnError => seqUnordered(stopFlag, index)
             }
           }
         }
@@ -194,8 +191,9 @@ object FuturePatterns {
     }
 
     val index = new AtomicInteger(0)
+    val stopFlag = new AtomicBoolean(false)
     val futures = List.fill(batchSize) {
-      seqUnordered(elements, index, producer, stop)
+      seqUnordered(stopFlag, index)
     }
 
     Future.sequence(futures).map(_.flatten)
