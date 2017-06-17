@@ -155,17 +155,4 @@ class FutureTests extends FlatSpec {
 
     val finalRes = Await.result(res, 4 second)
   }
-
-  "resource pool" should "allocate all resources and get all back" in {
-    val counter = new AtomicInteger()
-    val pool = AsyncResourcePool(10, 50) {
-      s"resource-${counter.getAndIncrement}"
-    }
-
-    val waitTime = ThreadLocalRandom.current.nextInt(1, 5)
-    val holdTime = ThreadLocalRandom.current.nextInt(1, 5)
-
-
-
-  }
 }
