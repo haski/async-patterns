@@ -146,8 +146,8 @@ object FuturePatterns {
       producer(attempt).recoverWith {
         case error: Throwable if attempt < retries - 1 =>
           policy match {
-            case Conditional(predicate) if predicate(error) => nextRetry()
             case Immediate() => nextRetry()
+            case Conditional(predicate) if predicate(error) => nextRetry()
             case Pause(duration) => scheduleWith(duration) {
               nextRetry()
             }
