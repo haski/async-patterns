@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 /**
   * Created by aronen, marenzon on 18/05/2017.
@@ -20,11 +20,7 @@ object FuturePatterns {
 
     val res = Promise[T]()
     scheduler.schedule(() => {
-      try
-        res.success(callable)
-      catch {
-        case e: Throwable => res.failure(e)
-      }
+      res.complete(Try(callable))
     }, duration.toMillis, TimeUnit.MILLISECONDS)
 
     res.future
@@ -34,12 +30,7 @@ object FuturePatterns {
                      (callable: => Future[T])
                      (implicit scheduler: ScheduledExecutorService): Future[T] = {
 
-    val res = Promise[T]()
-    scheduler.schedule(() => {
-      res.completeWith(callable)
-    }, duration.toMillis, TimeUnit.MILLISECONDS)
-
-    res.future
+    schedule(duration)(callable).flatten
   }
 
   implicit class FutureTimeout[T](future: Future[T]) {
@@ -201,7 +192,7 @@ object FuturePatterns {
       seqUnordered(stopFlag, index)
     }
 
-    Future.sequence(futures).map(_.flatten)
+    seq(futures).map(_.flatten)
   }
 
   def main(args: Array[String]): Unit = {
@@ -220,7 +211,7 @@ object FuturePatterns {
 
 
     val conditional: Conditional = Conditional {
-      case NonFatal(error) => Fixed(1 second)
+      case NonFatal(_) => Fixed(1 second)
     }
 
     val r = Await.result(retry(4, conditional) { i =>
