@@ -59,7 +59,7 @@ class FutureTests extends FlatSpec {
 
   "retry" should "be called 3 times" in {
 
-    val res = retry(3, Pause(1 second)) {
+    val res = retry(3, Fixed(1 second)) {
       case 0 => println("failing once")
         Future.failed(new RuntimeException("not good enough..."))
 

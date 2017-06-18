@@ -129,7 +129,7 @@ object FuturePatterns {
 
   case class Immediate() extends RetryPolicy
 
-  case class Pause(duration: Duration) extends RetryPolicy
+  case class Fixed(duration: Duration) extends RetryPolicy
 
   case class Exponential(duration: Duration) extends RetryPolicy
 
@@ -145,7 +145,7 @@ object FuturePatterns {
       val pe: PartialFunction[RetryPolicy, Future[T]] = { policy: RetryPolicy =>
         policy match {
           case Immediate() => nextRetry(policy)
-          case Pause(duration) => scheduleWith(duration) {
+          case Fixed(duration) => scheduleWith(duration) {
             nextRetry(policy)
           }
           case Exponential(duration) => scheduleWith(duration * (attempt + 1)) {
@@ -220,7 +220,7 @@ object FuturePatterns {
 
 
     val conditional: Conditional = Conditional {
-      case NonFatal(error) => Pause(1 second)
+      case NonFatal(error) => Fixed(1 second)
     }
 
     val r = Await.result(retry(4, conditional) { i =>
