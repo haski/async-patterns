@@ -131,6 +131,28 @@ class FutureTests extends FlatSpec {
 
   }
 
+  "seq" should "be faster than Future.sequence" in {
+    val f1 = schedule(2 second)("value")
+    val f2 = Future failed new RuntimeException("failed result")
+
+    val t1 = System.currentTimeMillis
+    val res1 = Future.sequence(List(f1, f2))
+    Await.ready(res1, 3 second)
+    val t2 = System.currentTimeMillis
+
+    println(s"Future.sequence took: ${t2 - t1}ms")
+
+    val f3 = schedule(2 second)("value")
+    val f4 = Future failed new RuntimeException("failed result")
+
+    val t3 = System.currentTimeMillis
+    val res2 = seq(List(f3, f4))
+    Await.ready(res2, 1 milli)
+    val t4 = System.currentTimeMillis
+
+    println(s"FuturePatterns.seq took: ${t4 - t3}ms")
+  }
+
 
   "seq" should "stop on first error" in {
 
