@@ -1,12 +1,12 @@
-import java.util.concurrent.ThreadLocalRandom
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+import java.util.concurrent.atomic.AtomicBoolean
 
-import org.scalatest.FlatSpec
 import futures.FuturePatterns._
+import org.scalatest.FlatSpec
 
-import scala.concurrent.{Await, Future, TimeoutException}
-import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration._
+import scala.concurrent.{Await, Future, TimeoutException}
+import futures.JavaScheduler._
 
 /**
   * Created by aronen on 19/05/2017.

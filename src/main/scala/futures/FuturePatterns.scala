@@ -3,7 +3,7 @@ package futures
 import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
@@ -12,30 +12,29 @@ import scala.util.{Failure, Success, Try}
   * Created by aronen, marenzon on 18/05/2017.
   */
 object FuturePatterns {
-  implicit val scheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
 
-  def schedule[T](duration: Duration)
+  def schedule[T](duration: FiniteDuration)
                  (callable: => T)
-                 (implicit scheduler: ScheduledExecutorService): Future[T] = {
+                 (implicit scheduler: Scheduler): Future[T] = {
 
     val res = Promise[T]()
-    scheduler.schedule(() => {
+    scheduler.scheduleOnce(duration, {
       res.complete(Try(callable))
-    }, duration.toMillis, TimeUnit.MILLISECONDS)
+    })
 
     res.future
   }
 
-  def scheduleWith[T](duration: Duration)
+  def scheduleWith[T](duration: FiniteDuration)
                      (callable: => Future[T])
-                     (implicit scheduler: ScheduledExecutorService): Future[T] = {
+                     (implicit scheduler: Scheduler): Future[T] = {
 
     schedule(duration)(callable).flatten
   }
 
   implicit class FutureTimeout[T](future: Future[T]) {
-    def withTimeout(duration: Duration)
-                   (implicit scheduler: ScheduledExecutorService, executor: ExecutionContext): Future[T] = {
+    def withTimeout(duration: FiniteDuration)
+                   (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
       val deadline = schedule(duration) {
         throw new TimeoutException("future timeout")
       }
@@ -45,8 +44,8 @@ object FuturePatterns {
   }
 
   implicit class FutureDelay[T](future: Future[T]) {
-    def delay(duration: Duration)
-             (implicit scheduler: ScheduledExecutorService, executor: ExecutionContext): Future[T] = {
+    def delay(duration: FiniteDuration)
+             (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
       future.flatMap(res => schedule(duration) {
         res
       })
@@ -55,11 +54,8 @@ object FuturePatterns {
 
 
   sealed trait StopCondition
-
   case object FailOnError extends StopCondition
-
   case object StopOnError extends StopCondition
-
   case object ContinueOnError extends StopCondition
 
   def map[K, T](futures: Map[K, Future[T]], stop: StopCondition = FailOnError)
@@ -94,16 +90,16 @@ object FuturePatterns {
   }
 
 
-  def doubleDispatch[T](duration: Duration)
+  def doubleDispatch[T](duration: FiniteDuration)
                        (producer: => Future[T])
-                       (implicit scheduler: ScheduledExecutorService, executor: ExecutionContext): Future[T] = {
+                       (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
 
     val done = new AtomicBoolean()
     val first = producer
     first.onComplete(_ => done.compareAndSet(false, true))
 
     val second = Promise[T]()
-    scheduler.schedule(() => {
+    scheduler.scheduleOnce(duration, {
       if (done.compareAndSet(false, true)) {
         try {
           producer.onComplete(second.complete)
@@ -111,27 +107,24 @@ object FuturePatterns {
           case e: Throwable => second.failure(e)
         }
       }
-    }, duration.toMillis, TimeUnit.MILLISECONDS)
+    })
 
     Future firstCompletedOf Seq(first, second.future)
   }
 
   sealed trait RetryPolicy
-
   case class Immediate() extends RetryPolicy
-
-  case class Fixed(duration: Duration) extends RetryPolicy
-
-  case class Exponential(duration: Duration) extends RetryPolicy
-
+  case class Fixed(duration: FiniteDuration) extends RetryPolicy
+  case class Exponential(duration: FiniteDuration) extends RetryPolicy
   case class Conditional(when: Throwable => RetryPolicy) extends RetryPolicy
 
   def retry[T](retries: Int, policy: RetryPolicy)
               (producer: Int => Future[T])
-              (implicit scheduler: ScheduledExecutorService, executor: ExecutionContext): Future[T] = {
+              (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
 
     def retry(attempt: Int, policy: RetryPolicy)
              (producer: Int => Future[T]): Future[T] = {
+
       val nextRetry = (policy: RetryPolicy) => retry(attempt + 1, policy)(producer)
       val pe: PartialFunction[RetryPolicy, Future[T]] = { policy: RetryPolicy =>
         policy match {
@@ -157,7 +150,7 @@ object FuturePatterns {
     retry(0, policy)(producer)
   }
 
-  def batch[T, R](elements: Seq[T], batchSize: Int, stop: StopCondition = FailOnError)
+  def batch[T, R](elements: Seq[T], parallelism: Int, stop: StopCondition = FailOnError)
                  (producer: T => Future[R])
                  (implicit executor: ExecutionContext): Future[Seq[R]] = {
 
@@ -188,7 +181,7 @@ object FuturePatterns {
 
     val index = new AtomicInteger(0)
     val stopFlag = new AtomicBoolean(false)
-    val futures = List.fill(batchSize) {
+    val futures = List.fill(parallelism) {
       seqUnordered(stopFlag, index)
     }
 
@@ -198,6 +191,7 @@ object FuturePatterns {
   def main(args: Array[String]): Unit = {
     import scala.concurrent.ExecutionContext.Implicits.global
     import scala.concurrent.duration._
+    import JavaScheduler._
     //
     //    val r = Await.result(batch(1 to 20, 2, ContinueOnError) { a =>
     //      if (a == 3) {
