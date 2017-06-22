@@ -78,12 +78,12 @@ class FutureTests extends FlatSpec {
   }
 
   "retry(conditional)" should "continue on TimeoutException" in {
-    val condition: Throwable => Boolean = {
+    val policy = Fixed(100 milli, {
       case _: TimeoutException => true
       case _: Throwable => false
-    }
+    })
 
-    val res = retry(3, Fixed(100 milli), condition) {
+    val res = retry(3, policy) {
       case 0 => println("fail on timeout, retrying")
         Future failed new TimeoutException("not responding...")
       case 1 => println("fail on timeout again, retrying")
