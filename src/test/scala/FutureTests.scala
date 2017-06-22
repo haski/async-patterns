@@ -1,3 +1,5 @@
+import java.io.IOException
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 
 import futures.FuturePatterns._
@@ -57,7 +59,7 @@ class FutureTests extends FlatSpec {
     assert (finalRes <= 1100)
   }
 
-  "retry" should "be called 3 times" in {
+  "retry(fixed)" should "be called 3 times" in {
 
     val res = retry(3, Fixed(1 second)) {
       case 0 => println("failing once")
@@ -73,6 +75,28 @@ class FutureTests extends FlatSpec {
     val finalResult = Await.result(res, 5 second)
     println(s"got $finalResult")
     assert (finalResult === "great success !")
+  }
+
+  "retry(conditional)" should "continue on TimeoutException" in {
+    val condition: Throwable => Boolean = {
+      case _: TimeoutException => true
+      case _: Throwable => false
+    }
+
+    val res = retry(3, Fixed(100 milli), condition) {
+      case 0 => println("fail on timeout, retrying")
+        Future failed new TimeoutException("not responding...")
+      case 1 => println("fail on timeout again, retrying")
+        Future failed new TimeoutException("still not responding...")
+      case 2 => println("fail on IO, stop retrying")
+        Future failed new IOException("something bad happened")
+    }
+
+    try Await.result(res, 3 second) catch {
+      case _: IOException => succeed
+      case _: Throwable => fail("should get IOException")
+    }
+
   }
 
   "doubleDispatch" should "return the short call" in {
@@ -91,9 +115,9 @@ class FutureTests extends FlatSpec {
       }
     }
 
-    val finalRes = Await.result(res, 4 second)
-    println(s"got $finalRes")
-    assert (finalRes === "fast response")
+    val (finalRes, time) = Await.result(res withTimer, 4 second)
+    println(s"got $finalRes after ${time.toMillis}ms")
+    assert (finalRes.get === "fast response")
   }
 
   "seq" should "collect all successful results" in {
@@ -135,22 +159,18 @@ class FutureTests extends FlatSpec {
     val f1 = schedule(2 second)("value")
     val f2 = Future failed new RuntimeException("failed result")
 
-    val t1 = System.currentTimeMillis
-    val res1 = Future.sequence(List(f1, f2))
-    Await.ready(res1, 3 second)
-    val t2 = System.currentTimeMillis
+    val res1 = Future.sequence(List(f1, f2)) withTimer
+    val (_, time1) = Await.result(res1, 3 second)
 
-    println(s"Future.sequence took: ${t2 - t1}ms")
+    println(s"Future.sequence took: ${time1.toMillis}")
 
     val f3 = schedule(2 second)("value")
     val f4 = Future failed new RuntimeException("failed result")
 
-    val t3 = System.currentTimeMillis
-    val res2 = seq(List(f3, f4))
-    Await.ready(res2, 1 milli)
-    val t4 = System.currentTimeMillis
+    val res2 = seq(List(f3, f4)) withTimer
+    val (_, time2) = Await.result(res2, 1 milli)
 
-    println(s"FuturePatterns.seq took: ${t4 - t3}ms")
+    println(s"FuturePatterns.seq took: ${time2.toMillis}")
   }
 
 

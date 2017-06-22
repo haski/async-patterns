@@ -4,8 +4,7 @@ import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 
 import scala.concurrent.duration.FiniteDuration
-import scala.concurrent.{Await, ExecutionContext, Future, Promise}
-import scala.util.control.NonFatal
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -52,6 +51,12 @@ object FuturePatterns {
     }
   }
 
+  implicit class FutureTimer[T](future: => Future[T]) {
+    def withTimer(implicit executor: ExecutionContext): Future[(Try[T], FiniteDuration)] = {
+      val t1 = System.nanoTime()
+      future.transform(res => Success(res, FiniteDuration(System.nanoTime() - t1, TimeUnit.NANOSECONDS)))
+    }
+  }
 
   sealed trait StopCondition
   case object FailOnError extends StopCondition
@@ -113,41 +118,30 @@ object FuturePatterns {
   }
 
   sealed trait RetryPolicy
-  case class Immediate() extends RetryPolicy
+  case object Immediate extends RetryPolicy
   case class Fixed(duration: FiniteDuration) extends RetryPolicy
   case class Exponential(duration: FiniteDuration) extends RetryPolicy
-  case class Conditional(when: Throwable => RetryPolicy) extends RetryPolicy
 
-  def retry[T](retries: Int, policy: RetryPolicy)
+  def retry[T](retries: Int, policy: RetryPolicy, condition: Throwable => Boolean = _ => true)
               (producer: Int => Future[T])
               (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
 
-    def retry(attempt: Int, policy: RetryPolicy)
-             (producer: Int => Future[T]): Future[T] = {
-
-      val nextRetry = (policy: RetryPolicy) => retry(attempt + 1, policy)(producer)
-      val pe: PartialFunction[RetryPolicy, Future[T]] = { policy: RetryPolicy =>
-        policy match {
-          case Immediate() => nextRetry(policy)
-          case Fixed(duration) => scheduleWith(duration) {
-            nextRetry(policy)
-          }
-          case Exponential(duration) => scheduleWith(duration * (attempt + 1)) {
-            nextRetry(policy)
-          }
-        }
-      }
-
+    def retry(attempt: Int): Future[T] = {
       producer(attempt).recoverWith {
-        case error: Throwable if attempt < retries - 1 =>
+        case error: Throwable if (attempt < retries - 1) && condition(error) =>
           policy match {
-            case Conditional(when) => pe(when(error))
-            case any => pe(any)
+            case Immediate => retry(attempt + 1)
+            case Fixed(duration) => scheduleWith(duration) {
+              retry(attempt + 1)
+            }
+            case Exponential(duration) => scheduleWith(duration * (attempt + 1)) {
+              retry(attempt + 1)
+            }
           }
       }
     }
 
-    retry(0, policy)(producer)
+    retry(0)
   }
 
   def batch[T, R](elements: Seq[T], parallelism: Int, stop: StopCondition = FailOnError)
@@ -188,33 +182,4 @@ object FuturePatterns {
     seq(futures).map(_.flatten)
   }
 
-  def main(args: Array[String]): Unit = {
-    import scala.concurrent.ExecutionContext.Implicits.global
-    import scala.concurrent.duration._
-    import JavaScheduler._
-    //
-    //    val r = Await.result(batch(1 to 20, 2, ContinueOnError) { a =>
-    //      if (a == 3) {
-    //        Future.failed(new RuntimeException)
-    //      } else {
-    //        Future(a)
-    //      }
-    //    }, Duration.Inf)
-    //
-    //    println(r)
-
-
-    val conditional: Conditional = Conditional {
-      case NonFatal(_) => Fixed(1 second)
-    }
-
-    val r = Await.result(retry(4, conditional) { i =>
-      println(i)
-      if (i == 3) {
-        Future(i)
-      } else {
-        Future.failed(new RuntimeException)
-      }
-    }, Duration.Inf)
-  }
 }
