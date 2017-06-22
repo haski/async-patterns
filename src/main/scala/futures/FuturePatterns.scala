@@ -45,8 +45,8 @@ object FuturePatterns {
   implicit class FutureDelay[T](future: Future[T]) {
     def delay(duration: FiniteDuration)
              (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
-      future.flatMap(res => schedule(duration) {
-        res
+      future.transformWith(res => scheduleWith(duration) {
+        Future.fromTry(res)
       })
     }
   }

@@ -1,5 +1,4 @@
 import java.io.IOException
-import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 
 import futures.FuturePatterns._
@@ -185,6 +184,7 @@ class FutureTests extends FlatSpec {
     val res = map(input, StopOnError)
 
     val finalRes = Await.result(res, 5 second)
+    println(s"result: $finalRes")
     assert (finalRes.size === 1)
   }
 
