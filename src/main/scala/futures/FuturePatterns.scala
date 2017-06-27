@@ -63,8 +63,8 @@ object FuturePatterns {
   case object StopOnError extends StopCondition
   case object ContinueOnError extends StopCondition
 
-  def map[K, T](futures: Map[K, Future[T]], stop: StopCondition = FailOnError)
-               (implicit executor: ExecutionContext): Future[Map[K, T]] = {
+  def collect[K, T](futures: Map[K, Future[T]], stop: StopCondition = FailOnError)
+                   (implicit executor: ExecutionContext): Future[Map[K, T]] = {
     val res = Promise[Map[K, T]]()
 
     import scala.collection.JavaConverters._
@@ -89,11 +89,10 @@ object FuturePatterns {
     res.future
   }
 
-  def seq[T](futures: Seq[Future[T]], stop: StopCondition = FailOnError)
-            (implicit executor: ExecutionContext): Future[Seq[T]] = {
-    map((1 to futures.size).zip(futures).toMap, stop).map(_.values.toList)
+  def sequence[T](futures: Seq[Future[T]], stop: StopCondition = FailOnError)
+                 (implicit executor: ExecutionContext): Future[Seq[T]] = {
+    collect((1 to futures.size).zip(futures).toMap, stop).map(_.values.toList)
   }
-
 
   def doubleDispatch[T](duration: FiniteDuration)
                        (producer: => Future[T])
@@ -186,7 +185,7 @@ object FuturePatterns {
       seqUnordered(stopFlag, index)
     }
 
-    seq(futures).map(_.flatten)
+    sequence(futures).map(_.flatten)
   }
 
 }

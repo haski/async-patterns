@@ -126,7 +126,7 @@ class FutureTests extends FlatSpec {
     val f4 = Future("third")
 
     val input = Map("1" -> f1, "2" -> f2, "3" -> f3, "4" -> f4)
-    val res = map(input, ContinueOnError)
+    val res = collect(input, ContinueOnError)
 
     val finalRes = Await.result(res, 1 second)
     println(s"got $finalRes")
@@ -141,7 +141,7 @@ class FutureTests extends FlatSpec {
     val f4 = schedule(4 second)("third")
 
     val input = Map("1" -> f1, "2" -> f2, "3" -> f3, "4" -> f4)
-    val res = map(input, FailOnError)
+    val res = collect(input, FailOnError)
 
     try {
       val finalRes = Await.result(res, 10 milli)
@@ -165,7 +165,7 @@ class FutureTests extends FlatSpec {
     val f3 = schedule(2 second)("value")
     val f4 = Future failed new RuntimeException("failed result")
 
-    val res2 = seq(List(f3, f4)) withTimer
+    val res2 = sequence(List(f3, f4)) withTimer
     val (_, time2) = Await.result(res2, 1 milli)
 
     println(s"FuturePatterns.seq took: ${time2.toMillis}")
@@ -180,7 +180,7 @@ class FutureTests extends FlatSpec {
     val f4 = schedule(4 second)("third")
 
     val input = Map("1" -> f1, "2" -> f2, "3" -> f3, "4" -> f4)
-    val res = map(input, StopOnError)
+    val res = collect(input, StopOnError)
 
     val finalRes = Await.result(res, 5 second)
     println(s"result: $finalRes")
