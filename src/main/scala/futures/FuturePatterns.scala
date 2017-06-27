@@ -117,28 +117,33 @@ object FuturePatterns {
     Future firstCompletedOf Seq(first, second.future)
   }
 
-  private val always: Throwable => Boolean = _ => true
+  type Conditional = PartialFunction[Throwable, RetryPolicy]
 
-  sealed trait RetryPolicy{ val condition: Throwable => Boolean }
-  case class Immediate(condition: Throwable => Boolean = always) extends RetryPolicy
-  case class Fixed(duration: FiniteDuration, condition: Throwable => Boolean = always) extends RetryPolicy
-  case class Exponential(duration: FiniteDuration, condition: Throwable => Boolean = always) extends RetryPolicy
+  sealed trait RetryPolicy
+  case object Immediate extends RetryPolicy
+  case class Fixed(duration: FiniteDuration) extends RetryPolicy
+  case class Exponential(duration: FiniteDuration) extends RetryPolicy
 
   def retry[T](retries: Int, policy: RetryPolicy)
               (producer: Int => Future[T])
               (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
+    retry(retries) { case _: Throwable => policy } (producer)
+  }
+
+  def retry[T](retries: Int)
+              (policy: Conditional)
+              (producer: Int => Future[T])
+              (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
 
     def retry(attempt: Int): Future[T] = {
+      lazy val nextRetry = retry(attempt + 1)
+
       producer(attempt).recoverWith {
-        case error: Throwable if (attempt < retries - 1) && policy.condition(error) =>
-          policy match {
-            case Immediate(_) => retry(attempt + 1)
-            case Fixed(duration, _) => scheduleWith(duration) {
-              retry(attempt + 1)
-            }
-            case Exponential(duration, _) => scheduleWith(duration * (attempt + 1)) {
-              retry(attempt + 1)
-            }
+        case error: Throwable if (attempt < retries - 1) && policy.isDefinedAt(error) =>
+          policy(error) match {
+            case Immediate => nextRetry
+            case Fixed(duration) => scheduleWith(duration)(nextRetry)
+            case Exponential(duration) => scheduleWith(duration * (attempt + 1))(nextRetry)
           }
       }
     }
