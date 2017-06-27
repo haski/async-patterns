@@ -189,7 +189,7 @@ class FutureTests extends FlatSpec {
 
 
   "batch" should "divide large batch into small batches" in {
-    val res = batch(1 to 6, 2, FailOnError) { num =>
+    val res = parallelCollect(1 to 6, 2, FailOnError) { num =>
       println(s"producing future $num")
       Future(s"result $num") delay (1 second)
     }

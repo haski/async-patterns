@@ -3,6 +3,7 @@ package futures
 import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 
+import scala.collection.immutable.Seq
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
@@ -63,6 +64,11 @@ object FuturePatterns {
   case object StopOnError extends StopCondition
   case object ContinueOnError extends StopCondition
 
+  def sequence[T](futures: Seq[Future[T]], stop: StopCondition = FailOnError)
+                 (implicit executor: ExecutionContext): Future[Seq[T]] = {
+    collect((1 to futures.size).zip(futures).toMap, stop).map(_.values.toList)
+  }
+
   def collect[K, T](futures: Map[K, Future[T]], stop: StopCondition = FailOnError)
                    (implicit executor: ExecutionContext): Future[Map[K, T]] = {
     val res = Promise[Map[K, T]]()
@@ -87,11 +93,6 @@ object FuturePatterns {
     }
 
     res.future
-  }
-
-  def sequence[T](futures: Seq[Future[T]], stop: StopCondition = FailOnError)
-                 (implicit executor: ExecutionContext): Future[Seq[T]] = {
-    collect((1 to futures.size).zip(futures).toMap, stop).map(_.values.toList)
   }
 
   def doubleDispatch[T](duration: FiniteDuration)
@@ -126,7 +127,7 @@ object FuturePatterns {
   def retry[T](retries: Int, policy: RetryPolicy)
               (producer: Int => Future[T])
               (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
-    retry(retries) { case _: Throwable => policy } (producer)
+    retry(retries) { case _: Throwable => policy }(producer)
   }
 
   def retry[T](retries: Int)
@@ -150,9 +151,18 @@ object FuturePatterns {
     retry(0)
   }
 
-  def batch[T, R](elements: Seq[T], parallelism: Int, stop: StopCondition = FailOnError)
-                 (producer: T => Future[R])
-                 (implicit executor: ExecutionContext): Future[Seq[R]] = {
+  def parallelFold[T, R, C](elements: Seq[T], parallelism: Int, stop: StopCondition = FailOnError)
+                           (zero: C)
+                           (op: (C, R) => C)
+                           (producer: T => Future[R])
+                           (implicit executor: ExecutionContext): Future[C] = {
+    val futures: Future[Seq[R]] = parallelCollect(elements, parallelism, stop)(producer)
+    futures.map(_.foldLeft(zero)(op))
+  }
+
+  def parallelCollect[T, R](elements: Seq[T], parallelism: Int, stop: StopCondition = FailOnError)
+                           (producer: T => Future[R])
+                           (implicit executor: ExecutionContext): Future[Seq[R]] = {
 
     def seqUnordered(stopFlag: AtomicBoolean, index: AtomicInteger): Future[List[R]] = {
 
@@ -187,5 +197,4 @@ object FuturePatterns {
 
     sequence(futures).map(_.flatten)
   }
-
 }
