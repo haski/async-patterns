@@ -9,6 +9,8 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, Future, TimeoutException}
 import futures.JavaScheduler._
 
+import scala.util.{Failure, Success}
+
 /**
   * Created by aronen on 19/05/2017.
   */
@@ -77,6 +79,7 @@ class FutureTests extends FlatSpec {
   }
 
   "retry(conditional)" should "continue on TimeoutException" in {
+
     val policy: PartialFunction[Throwable, RetryPolicy] = {
       case _: TimeoutException => Fixed(100 millisecond)
     }
@@ -98,6 +101,7 @@ class FutureTests extends FlatSpec {
   }
 
   "doubleDispatch" should "return the short call" in {
+
     val switch = new AtomicBoolean()
     val res = doubleDispatch(1 second) {
       if (switch.compareAndSet(false, true)) {
@@ -118,7 +122,7 @@ class FutureTests extends FlatSpec {
     assert (finalRes.get === "fast response")
   }
 
-  "seq" should "collect all successful results" in {
+  "collect" should "collect all successful results" in {
 
     val f1 = Future("first")
     val f2 = Future("second")
@@ -133,7 +137,7 @@ class FutureTests extends FlatSpec {
     assert (finalRes.size === 3)
   }
 
-  "seq" should "fail immediately if error occurs" in {
+  "collect" should "fail immediately if error occurs" in {
 
     val f1 = schedule(2 second)("first")
     val f2 = schedule(3 second)("second")
@@ -153,7 +157,8 @@ class FutureTests extends FlatSpec {
 
   }
 
-  "seq" should "be faster than Future.sequence" in {
+  "sequence" should "be faster than Future.sequence" in {
+
     val f1 = schedule(2 second)("value")
     val f2 = Future failed new RuntimeException("failed result")
 
@@ -172,7 +177,7 @@ class FutureTests extends FlatSpec {
   }
 
 
-  "seq" should "stop on first error" in {
+  "collect" should "stop on first error" in {
 
     val f1 = schedule(1 second)("first")
     val f3 = Future failed new RuntimeException("failed result") delay (2 second)
@@ -185,6 +190,26 @@ class FutureTests extends FlatSpec {
     val finalRes = Await.result(res, 5 second)
     println(s"result: $finalRes")
     assert (finalRes.size === 1)
+  }
+
+  "collectAll" should "collect all results" in {
+    val f1 = schedule(1 second)("first")
+    val f3 = Future failed new RuntimeException("failed result") delay (2 second)
+    val f2 = schedule(3 second)("second")
+    val f4 = schedule(4 second)("third")
+
+    val input = Map("1" -> f1, "2" -> f2, "3" -> f3, "4" -> f4)
+    val res = collectAll(input)
+
+    val finalRes = Await.result(res, 5 second)
+    println(s"result: $finalRes")
+    assert (finalRes.size === 4)
+
+    val successResults = finalRes filter {case (_, Success(_)) => true }
+    val failedResults = finalRes filter {case (_, Failure(_)) => true }
+
+    assert (successResults.size === 3)
+    assert (failedResults.size === 1)
   }
 
 

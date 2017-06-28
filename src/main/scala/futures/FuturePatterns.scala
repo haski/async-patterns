@@ -95,6 +95,11 @@ object FuturePatterns {
     res.future
   }
 
+  def collectAll[K, T](futures: Map[K, Future[T]])
+                      (implicit executor: ExecutionContext): Future[Map[K, Try[T]]] = {
+    collect(futures.mapValues(_.transform(Try(_))), ContinueOnError)
+  }
+
   def doubleDispatch[T](duration: FiniteDuration)
                        (producer: => Future[T])
                        (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
