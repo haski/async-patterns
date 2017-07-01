@@ -9,7 +9,7 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, Future, TimeoutException}
 import futures.JavaScheduler._
 
-import scala.util.{Failure, Success}
+import scala.util.Success
 
 /**
   * Created by aronen on 19/05/2017.
