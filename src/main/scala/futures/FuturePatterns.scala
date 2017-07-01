@@ -66,16 +66,36 @@ object FuturePatterns {
 
   def sequence[T](futures: Seq[Future[T]], stop: StopCondition = FailOnError)
                  (implicit executor: ExecutionContext): Future[Seq[T]] = {
-    collect((1 to futures.size).zip(futures).toMap, stop).map(_.values.toList)
+    sequenceFirst(futures, futures.length, stop)
+  }
+
+  def sequenceAll[T](futures: Seq[Future[T]])
+                    (implicit executor: ExecutionContext): Future[Seq[Try[T]]] = {
+    collectAll((1 to futures.size).zip(futures).toMap).map(_.values.toList)
+  }
+
+  def sequenceFirst[T](futures: Seq[Future[T]], values: Int, stop: StopCondition)
+                      (implicit executor: ExecutionContext): Future[Seq[T]] = {
+    collectFirst((1 to futures.size).zip(futures).toMap, futures.size, stop).map(_.values.toList)
   }
 
   def collect[K, T](futures: Map[K, Future[T]], stop: StopCondition = FailOnError)
                    (implicit executor: ExecutionContext): Future[Map[K, T]] = {
+    collectFirst(futures, futures.size, stop)
+  }
+
+  def collectAll[K, T](futures: Map[K, Future[T]])
+                      (implicit executor: ExecutionContext): Future[Map[K, Try[T]]] = {
+    collectFirst(futures.mapValues(_.transform(Try(_))), futures.size)
+  }
+
+  def collectFirst[K, T](futures: Map[K, Future[T]], values: Int, stop: StopCondition = FailOnError)
+                        (implicit executor: ExecutionContext): Future[Map[K, T]] = {
     val res = Promise[Map[K, T]]()
 
     import scala.collection.JavaConverters._
     val results = new ConcurrentHashMap[K, T]()
-    val counter = new AtomicInteger(futures.size)
+    val counter = new AtomicInteger(values)
 
     futures.foreach { case (key, future) =>
       future.onComplete {
@@ -93,11 +113,6 @@ object FuturePatterns {
     }
 
     res.future
-  }
-
-  def collectAll[K, T](futures: Map[K, Future[T]])
-                      (implicit executor: ExecutionContext): Future[Map[K, Try[T]]] = {
-    collect(futures.mapValues(_.transform(Try(_))), ContinueOnError)
   }
 
   def doubleDispatch[T](duration: FiniteDuration)

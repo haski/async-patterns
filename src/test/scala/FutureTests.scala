@@ -203,15 +203,29 @@ class FutureTests extends FlatSpec {
 
     val finalRes = Await.result(res, 5 second)
     println(s"result: $finalRes")
-    assert (finalRes.size === 4)
+    assert(finalRes.size === 4)
 
-    val successResults = finalRes filter {case (_, Success(_)) => true }
-    val failedResults = finalRes filter {case (_, Failure(_)) => true }
+    val results = finalRes partition  {
+      case (_, Success(_)) => true
+      case _ => false
+    }
 
-    assert (successResults.size === 3)
-    assert (failedResults.size === 1)
+    assert(results._1.size === 3)
+    assert(results._2.size === 1)
   }
 
+  "collectFirst" should "collect first computed results" in {
+    val f1 = schedule(1 second)("first")
+    val f2 = schedule(2 second)("second")
+    val f3 = schedule(3 second)("third")
+
+    val input = Map("1" -> f1, "2" -> f2, "3" -> f3)
+    val res = collectFirst(input, 2)
+
+    val finalRes = Await.result(res, 3 second)
+    println(s"result: $finalRes")
+    assert(finalRes.size === 2)
+  }
 
   "batch" should "divide large batch into small batches" in {
     val res = parallelCollect(1 to 6, 2, FailOnError) { num =>
