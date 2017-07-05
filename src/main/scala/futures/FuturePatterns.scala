@@ -118,23 +118,26 @@ object FuturePatterns {
   def doubleDispatch[T](duration: FiniteDuration)
                        (producer: => Future[T])
                        (implicit scheduler: Scheduler, executor: ExecutionContext): Future[T] = {
-
     val done = new AtomicBoolean()
-    val first = producer
-    first.onComplete(_ => done.compareAndSet(false, true))
+    try {
+      val first = producer
+      first.onComplete(_ => done.compareAndSet(false, true))
 
-    val second = Promise[T]()
-    scheduler.scheduleOnce(duration, {
-      if (done.compareAndSet(false, true)) {
-        try {
-          producer.onComplete(second.complete)
-        } catch {
-          case e: Throwable => second.failure(e)
+      val second = Promise[T]()
+      scheduler.scheduleOnce(duration, {
+        if (done.compareAndSet(false, true)) {
+          try {
+            producer.onComplete(second.complete)
+          } catch {
+            case e: Throwable => second.failure(e)
+          }
         }
-      }
-    })
+      })
 
-    Future firstCompletedOf Seq(first, second.future)
+      Future firstCompletedOf Seq(first, second.future)
+    } catch {
+      case e: Throwable => Future.failed(e)
+    }
   }
 
   type Conditional = PartialFunction[Throwable, RetryPolicy]
