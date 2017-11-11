@@ -179,30 +179,41 @@ object FuturePatterns {
                            (op: (C, R) => C)
                            (producer: T => Future[R])
                            (implicit executor: ExecutionContext): Future[C] = {
-    val futures: Future[Seq[R]] = parallelCollect(elements, parallelism, stop)(producer)
+    val futures: Future[Seq[R]] = parallelSequence(elements, parallelism, stop)(producer)
     futures.map(_.foldLeft(zero)(op))
   }
 
-  def parallelCollect[T, R](elements: Seq[T], parallelism: Int, stop: StopCondition = FailOnError)
+  def parallelSequence[T, R](elements: Seq[T], parallelism: Int, stop: StopCondition = FailOnError)
                            (producer: T => Future[R])
                            (implicit executor: ExecutionContext): Future[Seq[R]] = {
 
-    def seqUnordered(stopFlag: AtomicBoolean, index: AtomicInteger): Future[List[R]] = {
+    parallelCollect[Int, T, R]((0 to elements.size) zip elements toMap, parallelism, stop) { (_, value) =>
+      producer(value)
+    } map (_.values.toList)
+  }
+
+  def parallelCollect[K, T, R](elements: Map[K, T], parallelism: Int, stop: StopCondition = FailOnError)
+                               (producer: (K, T) => Future[R])
+                               (implicit executor: ExecutionContext): Future[Map[K, R]] = {
+
+    val keys = elements.keys.toVector
+    def seqUnordered(stopFlag: AtomicBoolean, index: AtomicInteger): Future[Map[K, R]] = {
 
       val currentIndex = index.getAndIncrement
 
       if (currentIndex >= elements.size) {
-        Future(List[R]())
+        Future(Map[K, R]())
       } else {
         if (stopFlag.get()) {
-          Future(List[R]())
+          Future(Map[K, R]())
         } else {
-          producer(elements(currentIndex)).flatMap((result: R) => {
-            seqUnordered(stopFlag, index).map(results => result :: results)
+          val key = keys(currentIndex)
+          producer(key, elements(key)).flatMap((result: R) => {
+            seqUnordered(stopFlag, index).map(results => results + (key -> result))
           }).recoverWith { case error: Throwable =>
             stop match {
               case StopOnError => stopFlag.set(true)
-                Future(List[R]())
+                Future(Map[K, R]())
               case FailOnError => stopFlag.set(true)
                 Future.failed(error)
               case ContinueOnError => seqUnordered(stopFlag, index)
@@ -218,6 +229,7 @@ object FuturePatterns {
       seqUnordered(stopFlag, index)
     }
 
-    sequence(futures).map(_.flatten)
+    sequence(futures, stop).map(_.fold(Map[K, R]())(_ ++ _))
   }
+
 }
