@@ -1,7 +1,7 @@
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
-import futures.FuturePatterns._
+import io.fx.Futures._
 import org.scalatest.FlatSpec
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -78,7 +78,7 @@ class FutureTests extends FlatSpec {
     assert (finalResult === "great success !")
   }
 
-  "retry(conditional)" should "continue on TimeoutException" in {
+  "retry(conditional)" should "stop on IOException" in {
 
     val policy: PartialFunction[Throwable, RetryPolicy] = {
       case _: TimeoutException => Fixed(100 millisecond)
@@ -205,13 +205,13 @@ class FutureTests extends FlatSpec {
     println(s"result: $finalRes")
     assert(finalRes.size === 4)
 
-    val results = finalRes partition  {
+    val (goodResults, badResults) = finalRes partition  {
       case (_, Success(_)) => true
       case _ => false
     }
 
-    assert(results._1.size === 3)
-    assert(results._2.size === 1)
+    assert(goodResults.size === 3)
+    assert(badResults.size === 1)
   }
 
   "collectFirst" should "collect first computed results" in {
@@ -227,12 +227,14 @@ class FutureTests extends FlatSpec {
     assert(finalRes.size === 2)
   }
 
-  "batch" should "divide large batch into small batches" in {
-    val res = parallelCollect(1 to 6, 2, FailOnError) { num =>
+  "parallelSequence" should "divide large batch into small batches" in {
+    val res = parallelSequence(1 to 6, 2, FailOnError) { num =>
       println(s"producing future $num")
       Future(s"result $num") delay (1 second)
     }
 
     val finalRes = Await.result(res, 4 second)
   }
+
+
 }

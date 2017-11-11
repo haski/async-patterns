@@ -1,4 +1,4 @@
-package futures
+package io.fx
 
 import java.util.concurrent.ScheduledFuture
 

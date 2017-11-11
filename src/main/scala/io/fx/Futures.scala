@@ -1,4 +1,4 @@
-package futures
+package io.fx
 
 import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
@@ -11,7 +11,7 @@ import scala.util.{Failure, Success, Try}
 /**
   * Created by aronen, marenzon on 18/05/2017.
   */
-object FuturePatterns {
+object Futures {
 
   def schedule[T](duration: FiniteDuration)
                  (callable: => T)

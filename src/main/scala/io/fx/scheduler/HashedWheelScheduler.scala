@@ -1,8 +1,9 @@
-package futures
+package io.fx.scheduler
 
 import java.util.concurrent.TimeUnit
 
 import com.ifesdjeen.timer.HashedWheelTimer
+import io.fx.Scheduler
 
 import scala.concurrent.duration.FiniteDuration
 

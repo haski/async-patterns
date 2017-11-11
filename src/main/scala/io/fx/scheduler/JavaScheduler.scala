@@ -1,6 +1,8 @@
-package futures
+package io.fx.scheduler
 
 import java.util.concurrent.{Executors, TimeUnit}
+
+import io.fx.Scheduler
 
 import scala.concurrent.duration.FiniteDuration
 
